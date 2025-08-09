@@ -1,0 +1,2 @@
+# sewkos-api
+Repositori ini akan berisi semua kode untuk sisi server aplikasi Anda. Ini adalah "otak" di balik aplikasi.  API: Rute-rute API (misalnya, /api/kos, /api/owner/login) yang digunakan oleh aplikasi mobile.  Database: Struktur database dan migrasi yang mendefinisikan tabel seperti kos, users, dan reviews.  Logika Bisnis: Kode yang memproses data, melakukan validasi, dan berkomunikasi dengan database.  Keamanan: Logika otentikasi (Laravel Sanctum) yang melindungi endpoint API.
