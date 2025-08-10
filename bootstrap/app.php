@@ -16,9 +16,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->append(\Illuminate\Http\Middleware\HandleCors::class);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        // $exceptions->render(function (AuthenticationException $exception, $request) {
-        //     return response()->json([
-        //         'error' => 'Unauthenticated.'
-        //     ], 401);
-        // });  
+        $exceptions->render(function (AuthenticationException $exception, $request) {
+            return response()->json([
+                'error' => 'Unauthenticated.'
+            ], 401);
+        });
     })->create();

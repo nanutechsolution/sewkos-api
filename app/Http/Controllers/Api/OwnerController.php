@@ -11,8 +11,10 @@ use Illuminate\Support\Facades\Storage;
 
 class OwnerController extends Controller
 {
+
     public function index(Request $request)
     {
+
         if (!$request->user()) {
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
@@ -77,42 +79,54 @@ class OwnerController extends Controller
             'data' => $kos
         ], 201);
     }
-
     public function update(Request $request, Kos $kos)
     {
-        if (!$request->user() || $request->user()->id !== $kos->user_id) {
-            return response()->json(['message' => 'Unauthorized.'], 403);
+        if (!$request->user()) {
+            return response()->json(['message' => 'Unauthenticated.'], 401);
         }
+
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
-            'location' => 'required|string|max:255',
-            'price' => 'required|numeric',
-            'description' => 'required|string',
-            'facilities' => 'required|string',
+            'name' => 'nullable|string|max:255',
+            'location' => 'nullable|string|max:255',
+            'price' => 'nullable|numeric',
+            'description' => 'nullable|string',
+            'facilities' => 'nullable|string',
             'status' => 'required|string|in:kosong,terisi',
             'latitude' => 'nullable|numeric',
             'longitude' => 'nullable|numeric',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
         }
-        // Jika ada file gambar baru, simpan dan update image_url
+
+        // Ambil ulang dari DB untuk memastikan model ini data lama
+        $kos = Kos::findOrFail($kos->id);
+
+        // Isi hanya field yang dikirim, sisanya tetap data lama
+        $kos->fill(array_filter(
+            $validator->validated(),
+            fn($value) => !is_null($value)
+        ));
+
+        // Update gambar jika ada
         if ($request->hasFile('image')) {
+            if ($kos->image_url) {
+                $oldPath = str_replace(url('/storage'), '', $kos->image_url);
+                Storage::disk('public')->delete($oldPath);
+            }
             $imagePath = $request->file('image')->store('kos_images', 'public');
             $kos->image_url = Storage::url($imagePath);
         }
 
-        $kos->update([
-            'name' => $request->name,
-            'location' => $request->location,
-            'price' => $request->price,
-            'description' => $request->description,
-            'facilities' => json_encode(explode(',', $request->facilities)),
-            'status' => $request->status,
-            'latitude' => $request->latitude,     // tambah ini
-            'longitude' => $request->longitude,   // tambah ini
-        ]);
+        // Update fasilitas
+        if ($request->has('facilities')) {
+            $facilitiesArray = array_map('trim', explode(',', $request->facilities));
+            $kos->facilities = json_encode(array_values(array_filter($facilitiesArray)));
+        }
+
+        $kos->save();
 
         return response()->json([
             'status' => 'success',
@@ -120,7 +134,6 @@ class OwnerController extends Controller
             'data' => $kos
         ]);
     }
-
 
 
     public function destroy(Kos $kos)
