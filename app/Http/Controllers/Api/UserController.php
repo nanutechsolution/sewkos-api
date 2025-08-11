@@ -6,16 +6,15 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Hash;
-use App\Models\User;
+use App\Models\User; // Pastikan model User diimpor
 
 class UserController extends Controller
 {
     public function show(Request $request)
     {
-        // Kembalikan data profil pengguna yang terautentikasi
         return response()->json([
             'status' => 'success',
-            'data' => $request->user()
+            'data' => $request->user() // Mengembalikan semua data user
         ]);
     }
 
@@ -24,7 +23,7 @@ class UserController extends Controller
         $user = $request->user();
 
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
+            'name' => 'required|string|max:255', // Pastikan validasi name ada
             'email' => 'required|string|email|max:255|unique:users,email,' . $user->id,
             'password' => 'nullable|string|min:8|confirmed',
         ]);
@@ -37,7 +36,7 @@ class UserController extends Controller
             ], 422);
         }
 
-        $user->name = $request->name;
+        $user->name = $request->name; // Pastikan name diupdate
         $user->email = $request->email;
         if ($request->password) {
             $user->password = Hash::make($request->password);

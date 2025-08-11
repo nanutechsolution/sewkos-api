@@ -23,6 +23,7 @@ class AuthController extends Controller
                 'token' => $token,
                 'user' => [
                     'id' => $user->id,
+                    'name' => $user->name, // Pastikan ini ada
                     'email' => $user->email,
                 ],
             ]);
@@ -31,14 +32,10 @@ class AuthController extends Controller
         return response()->json(['message' => 'Unauthorized'], 401);
     }
 
-    // app/Http/Controllers/AuthController.php
-
-    // ... (kode lainnya)
-
     public function register(Request $request)
     {
         $validator = Validator::make($request->all(), [
-            'name' => 'required|string|max:255',
+            'name' => 'required|string|max:255', // Pastikan validasi name ada
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8|confirmed',
         ]);
@@ -52,7 +49,7 @@ class AuthController extends Controller
         }
 
         $user = User::create([
-            'name' => $request->name, // Simpan nama
+            'name' => $request->name,
             'email' => $request->email,
             'password' => Hash::make($request->password),
         ]);
@@ -64,7 +61,7 @@ class AuthController extends Controller
             'token' => $token,
             'user' => [
                 'id' => $user->id,
-                'name' => $user->name, // Kirim nama di respons
+                'name' => $user->name, // Pastikan name dikembalikan
                 'email' => $user->email,
             ],
         ], 201);
