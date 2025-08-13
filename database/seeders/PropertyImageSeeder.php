@@ -16,21 +16,21 @@ class PropertyImageSeeder extends Seeder
         DB::table('property_images')->insert([
             [
                 'property_id' => 1,
-                'image_url' => '192.168.251.106:8000/assets/images/kos_sumba_1.jpg',
+                'image_url' => '/assets/images/kos_sumba_1.jpg',
                 'type' => 'front_view',
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
             [
                 'property_id' => 1,
-                'image_url' => '192.168.251.106:8000/assets/images/kos_sumba_interior.jpg',
+                'image_url' => '/assets/images/kos_sumba_interior.jpg',
                 'type' => 'interior',
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
             [
                 'property_id' => 2,
-                'image_url' => '192.168.251.106:8000/assets/images/kos_sumba_2.jpg',
+                'image_url' => '/assets/images/kos_sumba_2.jpg',
                 'type' => 'front_view',
                 'created_at' => now(),
                 'updated_at' => now(),

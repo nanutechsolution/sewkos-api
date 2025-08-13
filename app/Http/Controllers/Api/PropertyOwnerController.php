@@ -8,8 +8,7 @@ use App\Models\PropertyImage;
 use App\Models\RoomType;
 use App\Models\RoomTypeImage;
 use App\Models\Room;
-use App\Models\Facility;
-use App\Models\RoomTypePrice; // Pastikan ini diimpor
+use App\Models\RoomTypePrice;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
@@ -41,6 +40,161 @@ class PropertyOwnerController extends Controller
         ]);
     }
     public function store(Request $request)
+    {
+
+        // 1. Validasi data
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'gender_preference' => 'required|string|in:Putra,Putri,Campur',
+            'description' => 'required|string',
+            'rules' => 'nullable|string',
+            'year_built' => 'required|integer|min:1900|max:' . date('Y'),
+            'manager_name' => 'nullable|string|max:255',
+            'manager_phone' => 'nullable|string|max:255',
+            'notes' => 'nullable|string',
+            'address_street' => 'required|string|max:255',
+            'address_city' => 'required|string|max:255',
+            'address_province' => 'required|string|max:255',
+            'address_zip_code' => 'nullable|string|max:10',
+            'latitude' => 'required|numeric',
+            'longitude' => 'required|numeric',
+            'property_images.*' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'property_image_types.*' => 'nullable|string',
+            'rules_file' => 'nullable|file|mimes:pdf|max:2048',
+            'general_facilities' => 'nullable|array',
+            'general_facilities.*' => 'nullable|integer|exists:facilities,id',
+
+            // Property Images (optional)
+            'property_images' => 'nullable|array',
+            'property_images.*' => 'image|mimes:jpeg,png,jpg,gif|max:2048',
+            'property_image_types' => 'nullable|array',
+            'property_image_types.*' => 'string|in:front_view,interior,street_view,other',
+
+
+            'room_types.*.name' => 'required|string|max:255',
+            'room_types.*.description' => 'required|string',
+            'room_types.*.size_m2' => 'required|numeric',
+            'room_types.*.total_rooms' => 'required|integer|min:1',
+            'room_types.*.prices.*.period_type' => 'required|string',
+            'room_types.*.prices.*.price' => 'required|numeric|min:0',
+            'room_type_images.*.*' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'room_type_image_types.*.*' => 'nullable|string',
+            'room_type_specific_facilities.*' => 'nullable|array',
+            'room_type_specific_facilities.*.*' => 'nullable|integer|exists:facilities,id',
+            'rooms.*.*.room_number' => 'required|string|max:255',
+            'rooms.*.*.floor' => 'required|integer',
+            'rooms.*.*.status' => 'required|string|in:available,occupied,maintenance',
+
+
+            // Room type images
+            'room_type_images' => 'nullable|array',
+            'room_type_images.*.*' => 'image|mimes:jpeg,png,jpg,gif|max:2048',
+            'room_type_image_types' => 'nullable|array',
+            'room_type_image_types.*.*' => 'string|in:cover,interior,bathroom,other',
+        ]);
+
+        try {
+            // Gunakan transaksi untuk memastikan semua data tersimpan atau tidak sama sekali
+            return DB::transaction(function () use ($validated, $request) {
+                // 2. Simpan data properti utama
+                $property = Property::create([
+                    'user_id' => auth()->id(), // Ambil ID pemilik dari user yang sedang login
+                    'name' => $validated['name'],
+                    'gender_preference' => $validated['gender_preference'],
+                    'description' => $validated['description'],
+                    'rules' => $validated['rules'],
+                    'year_built' => $validated['year_built'],
+                    'manager_name' => $validated['manager_name'] ?? null,
+                    'manager_phone' => $validated['manager_phone'] ?? null,
+                    'notes' => $validated['notes'] ?? null,
+                    'address_street' => $validated['address_street'],
+                    'address_city' => $validated['address_city'],
+                    'address_province' => $validated['address_province'],
+                    'address_zip_code' => $validated['address_zip_code'],
+                    'latitude' => $validated['latitude'],
+                    'longitude' => $validated['longitude'],
+                ]);
+
+                // 3. Unggah dan simpan gambar properti
+                foreach ($request->file('property_images') as $index => $imageFile) {
+                    $path = $imageFile->store('property_images', 'public');
+                    $relativePath = str_replace('public/', '', $path);
+                    $property->images()->create([
+                        'image_url' => $relativePath,
+                        'type' => $request->input("property_image_types.$index"),
+                    ]);
+                }
+                // 4. Unggah dan simpan file peraturan
+                if ($request->hasFile('rules_file')) {
+                    $path = $request->file('rules_file')->store('public/rules_files');
+                    $property->update(['rules_file_url' => Storage::url($path)]);
+                }
+
+                // 5. Simpan tipe kamar dan data relasinya
+                if ($request->has('room_types')) {
+                    foreach ($request->input('room_types') as $index => $roomTypeData) {
+                        $roomType = $property->roomTypes()->create([
+                            'name' => $roomTypeData['name'],
+                            'description' => $roomTypeData['description'],
+                            'size_m2' => $roomTypeData['size_m2'],
+                            'total_rooms' => $roomTypeData['total_rooms'],
+                            'available_rooms' => $roomTypeData['total_rooms'],
+                        ]);
+
+                        // Simpan harga sewa
+                        if ($request->has("room_types.$index.prices")) {
+                            foreach ($request->input("room_types.$index.prices") as $priceData) {
+                                $roomType->prices()->create($priceData);
+                            }
+                        }
+
+                        // Simpan fasilitas spesifik kamar
+                        if ($request->has("room_type_specific_facilities.$index")) {
+                            $roomType->facilities()->sync($request->input("room_type_specific_facilities.$index"));
+                        }
+
+                        // Unggah dan simpan gambar tipe kamar
+                        if ($request->hasFile("room_type_images.$index")) {
+                            foreach ($request->file("room_type_images.$index") as $imgIndex => $imageFile) {
+                                // Simpan di storage/app/public/room_type_images
+                                $path = $imageFile->store('room_type_images', 'public');
+                                // Hapus 'public/' dari path agar tersimpan bersih di DB
+                                $relativePath = str_replace('public/', '', $path);
+                                $roomType->images()->create([
+                                    'image_url' => $relativePath, // path bersih
+                                    'type' => $request->input("room_type_image_types.$index.$imgIndex"),
+                                ]);
+                            }
+                        }
+                        // Simpan kamar individual
+                        if ($request->has("rooms.$index")) {
+                            $roomType->rooms()->createMany($request->input("rooms.$index"));
+                        }
+                    }
+                }
+
+                // 6. Simpan fasilitas umum
+                if ($request->has('general_facilities')) {
+                    $property->facilities()->sync($validated['general_facilities']);
+                }
+
+                // Muat ulang relasi agar respons lengkap
+                $property->load([
+                    'images',
+                    'facilities',
+                    'roomTypes.prices',
+                    'roomTypes.facilities',
+                    'roomTypes.images',
+                    'roomTypes.rooms'
+                ]);
+
+                return response()->json(['message' => 'Properti berhasil dibuat.', 'data' => $property], 201);
+            });
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Gagal membuat properti.', 'error' => $e->getMessage()], 500);
+        }
+    }
+    public function store1(Request $request)
     {
         if (!$request->user()) {
             return response()->json(['message' => 'Unauthenticated.'], 401);
@@ -76,7 +230,7 @@ class PropertyOwnerController extends Controller
             'room_types.*.size_m2' => 'nullable|numeric',
             'room_types.*.total_rooms' => 'required|integer|min:0',
             'room_types.*.price_daily' => 'nullable|numeric|min:0',
-            'room_types.*.price_monthly' => 'required|numeric|min:0',
+            // 'room_types.*.price_monthly' => 'required|numeric|min:0',
             'room_types.*.price_3_months' => 'nullable|numeric|min:0',
             'room_types.*.price_6_months' => 'nullable|numeric|min:0',
             'room_types.*.specific_facilities' => 'nullable|array',

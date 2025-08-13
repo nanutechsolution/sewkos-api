@@ -1,0 +1,98 @@
+{
+    "id": "0",
+    "user_id": "0",
+    "name": "kos 1",
+    "gender_preference": "Putri",
+    "description": "tes",
+    "rules": "tesperaturnter",
+    "year_built": "2024",
+    "address_street": "marokot",
+    "address_city": "Marokota",
+    "address_province": "Nusa Tenggara Timur",
+    "address_zip_code": "12345",
+    "latitude": "-9.5002632",
+    "longitude": "119.2018948",
+    "total_rooms": "1",
+    "available_rooms": "1",
+    "reviews": "[]",
+    "room_types": [
+        {
+            "name": "res",
+            "description": "res",
+            "size_m2": "2.0",
+            "total_rooms": "1",
+            "prices": [
+                {
+                    "period_type": "monthly",
+                    "price": "21354.0"
+                },
+                {
+                    "period_type": "daily",
+                    "price": "0.0"
+                },
+                {
+                    "period_type": "3_months",
+                    "price": "0.0"
+                },
+                {
+                    "period_type": "6_months",
+                    "price": "0.0"
+                }
+            ]
+        }
+    ],
+    "rooms": [
+        [
+            {
+                "room_number": "3",
+                "floor": "2",
+                "status": "available"
+            }
+        ]
+    ],
+    "room_type_specific_facilities": [
+        [
+            "7",
+            "10",
+            "12",
+            "14"
+        ]
+    ],
+    "general_facilities": [
+        "2",
+        "1",
+        "3"
+    ],
+    "property_image_types": [
+        "front_view",
+        "street_view",
+        "interior",
+        "other"
+    ],
+    "room_type_image_types": [
+        [
+            "other"
+        ]
+    ],
+    "property_images": [
+        {
+            "Illuminate\\Http\\UploadedFile": "C:\\Users\\Nanu\\AppData\\Local\\Temp\\phpC2F5.tmp"
+        },
+        {
+            "Illuminate\\Http\\UploadedFile": "C:\\Users\\Nanu\\AppData\\Local\\Temp\\phpC2F6.tmp"
+        },
+        {
+            "Illuminate\\Http\\UploadedFile": "C:\\Users\\Nanu\\AppData\\Local\\Temp\\phpC2F7.tmp"
+        },
+        {
+            "Illuminate\\Http\\UploadedFile": "C:\\Users\\Nanu\\AppData\\Local\\Temp\\phpC2F8.tmp"
+        }
+    ],
+    "room_type_images": [
+        [
+            {
+                "Illuminate\\Http\\UploadedFile": "C:\\Users\\Nanu\\AppData\\Local\\Temp\\phpC2F9.tmp"
+            }
+        ]
+    ]
+}
