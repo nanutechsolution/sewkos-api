@@ -5,15 +5,13 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Property;
 use App\Models\PropertyImage;
-use App\Models\RoomType;
 use App\Models\RoomTypeImage;
-use App\Models\Room;
 use App\Models\RoomTypePrice;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class PropertyOwnerController extends Controller
 {
@@ -41,165 +39,11 @@ class PropertyOwnerController extends Controller
     }
     public function store(Request $request)
     {
-
-        // 1. Validasi data
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'gender_preference' => 'required|string|in:Putra,Putri,Campur',
-            'description' => 'required|string',
-            'rules' => 'nullable|string',
-            'year_built' => 'required|integer|min:1900|max:' . date('Y'),
-            'manager_name' => 'nullable|string|max:255',
-            'manager_phone' => 'nullable|string|max:255',
-            'notes' => 'nullable|string',
-            'address_street' => 'required|string|max:255',
-            'address_city' => 'required|string|max:255',
-            'address_province' => 'required|string|max:255',
-            'address_zip_code' => 'nullable|string|max:10',
-            'latitude' => 'required|numeric',
-            'longitude' => 'required|numeric',
-            'property_images.*' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
-            'property_image_types.*' => 'nullable|string',
-            'rules_file' => 'nullable|file|mimes:pdf|max:2048',
-            'general_facilities' => 'nullable|array',
-            'general_facilities.*' => 'nullable|integer|exists:facilities,id',
-
-            // Property Images (optional)
-            'property_images' => 'nullable|array',
-            'property_images.*' => 'image|mimes:jpeg,png,jpg,gif|max:2048',
-            'property_image_types' => 'nullable|array',
-            'property_image_types.*' => 'string|in:front_view,interior,street_view,other',
-
-
-            'room_types.*.name' => 'required|string|max:255',
-            'room_types.*.description' => 'required|string',
-            'room_types.*.size_m2' => 'required|numeric',
-            'room_types.*.total_rooms' => 'required|integer|min:1',
-            'room_types.*.prices.*.period_type' => 'required|string',
-            'room_types.*.prices.*.price' => 'required|numeric|min:0',
-            'room_type_images.*.*' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
-            'room_type_image_types.*.*' => 'nullable|string',
-            'room_type_specific_facilities.*' => 'nullable|array',
-            'room_type_specific_facilities.*.*' => 'nullable|integer|exists:facilities,id',
-            'rooms.*.*.room_number' => 'required|string|max:255',
-            'rooms.*.*.floor' => 'required|integer',
-            'rooms.*.*.status' => 'required|string|in:available,occupied,maintenance',
-
-
-            // Room type images
-            'room_type_images' => 'nullable|array',
-            'room_type_images.*.*' => 'image|mimes:jpeg,png,jpg,gif|max:2048',
-            'room_type_image_types' => 'nullable|array',
-            'room_type_image_types.*.*' => 'string|in:cover,interior,bathroom,other',
-        ]);
-
-        try {
-            // Gunakan transaksi untuk memastikan semua data tersimpan atau tidak sama sekali
-            return DB::transaction(function () use ($validated, $request) {
-                // 2. Simpan data properti utama
-                $property = Property::create([
-                    'user_id' => auth()->id(), // Ambil ID pemilik dari user yang sedang login
-                    'name' => $validated['name'],
-                    'gender_preference' => $validated['gender_preference'],
-                    'description' => $validated['description'],
-                    'rules' => $validated['rules'],
-                    'year_built' => $validated['year_built'],
-                    'manager_name' => $validated['manager_name'] ?? null,
-                    'manager_phone' => $validated['manager_phone'] ?? null,
-                    'notes' => $validated['notes'] ?? null,
-                    'address_street' => $validated['address_street'],
-                    'address_city' => $validated['address_city'],
-                    'address_province' => $validated['address_province'],
-                    'address_zip_code' => $validated['address_zip_code'],
-                    'latitude' => $validated['latitude'],
-                    'longitude' => $validated['longitude'],
-                ]);
-
-                // 3. Unggah dan simpan gambar properti
-                foreach ($request->file('property_images') as $index => $imageFile) {
-                    $path = $imageFile->store('property_images', 'public');
-                    $relativePath = str_replace('public/', '', $path);
-                    $property->images()->create([
-                        'image_url' => $relativePath,
-                        'type' => $request->input("property_image_types.$index"),
-                    ]);
-                }
-                // 4. Unggah dan simpan file peraturan
-                if ($request->hasFile('rules_file')) {
-                    $path = $request->file('rules_file')->store('public/rules_files');
-                    $property->update(['rules_file_url' => Storage::url($path)]);
-                }
-
-                // 5. Simpan tipe kamar dan data relasinya
-                if ($request->has('room_types')) {
-                    foreach ($request->input('room_types') as $index => $roomTypeData) {
-                        $roomType = $property->roomTypes()->create([
-                            'name' => $roomTypeData['name'],
-                            'description' => $roomTypeData['description'],
-                            'size_m2' => $roomTypeData['size_m2'],
-                            'total_rooms' => $roomTypeData['total_rooms'],
-                            'available_rooms' => $roomTypeData['total_rooms'],
-                        ]);
-
-                        // Simpan harga sewa
-                        if ($request->has("room_types.$index.prices")) {
-                            foreach ($request->input("room_types.$index.prices") as $priceData) {
-                                $roomType->prices()->create($priceData);
-                            }
-                        }
-
-                        // Simpan fasilitas spesifik kamar
-                        if ($request->has("room_type_specific_facilities.$index")) {
-                            $roomType->facilities()->sync($request->input("room_type_specific_facilities.$index"));
-                        }
-
-                        // Unggah dan simpan gambar tipe kamar
-                        if ($request->hasFile("room_type_images.$index")) {
-                            foreach ($request->file("room_type_images.$index") as $imgIndex => $imageFile) {
-                                // Simpan di storage/app/public/room_type_images
-                                $path = $imageFile->store('room_type_images', 'public');
-                                // Hapus 'public/' dari path agar tersimpan bersih di DB
-                                $relativePath = str_replace('public/', '', $path);
-                                $roomType->images()->create([
-                                    'image_url' => $relativePath, // path bersih
-                                    'type' => $request->input("room_type_image_types.$index.$imgIndex"),
-                                ]);
-                            }
-                        }
-                        // Simpan kamar individual
-                        if ($request->has("rooms.$index")) {
-                            $roomType->rooms()->createMany($request->input("rooms.$index"));
-                        }
-                    }
-                }
-
-                // 6. Simpan fasilitas umum
-                if ($request->has('general_facilities')) {
-                    $property->facilities()->sync($validated['general_facilities']);
-                }
-
-                // Muat ulang relasi agar respons lengkap
-                $property->load([
-                    'images',
-                    'facilities',
-                    'roomTypes.prices',
-                    'roomTypes.facilities',
-                    'roomTypes.images',
-                    'roomTypes.rooms'
-                ]);
-
-                return response()->json(['message' => 'Properti berhasil dibuat.', 'data' => $property], 201);
-            });
-        } catch (\Exception $e) {
-            return response()->json(['message' => 'Gagal membuat properti.', 'error' => $e->getMessage()], 500);
-        }
-    }
-    public function store1(Request $request)
-    {
         if (!$request->user()) {
             return response()->json(['message' => 'Unauthenticated.'], 401);
         }
 
+        Log::debug('Request Input:', $request->all());
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
             'gender_preference' => 'required|string|in:Putra,Putri,Campur',
@@ -229,12 +73,9 @@ class PropertyOwnerController extends Controller
             'room_types.*.description' => 'nullable|string',
             'room_types.*.size_m2' => 'nullable|numeric',
             'room_types.*.total_rooms' => 'required|integer|min:0',
-            'room_types.*.price_daily' => 'nullable|numeric|min:0',
-            // 'room_types.*.price_monthly' => 'required|numeric|min:0',
-            'room_types.*.price_3_months' => 'nullable|numeric|min:0',
-            'room_types.*.price_6_months' => 'nullable|numeric|min:0',
-            'room_types.*.specific_facilities' => 'nullable|array',
-            'room_types.*.specific_facilities.*' => 'integer',
+            'room_types.*.prices' => 'required|array',
+            'room_types.*.prices.*.period_type' => 'required|string',
+            'room_types.*.prices.*.price' => 'required|numeric',
 
             // Room type images
             'room_type_images' => 'nullable|array',
@@ -291,14 +132,14 @@ class PropertyOwnerController extends Controller
             // 2. Save property images
             if ($request->hasFile('property_images')) {
                 foreach ($request->file('property_images') as $i => $file) {
+                    $path = $file->store('property_images', 'public');
                     PropertyImage::create([
                         'property_id' => $property->id,
-                        'image_url' => Storage::url($file->store('property_images', 'public')),
+                        'image_url' => $path,
                         'type' => $request->property_image_types[$i] ?? 'other',
                     ]);
                 }
             }
-
             // 3. Attach general facilities
             if (!empty($request->general_facilities)) {
                 $property->facilities()->attach($request->general_facilities);
@@ -321,23 +162,24 @@ class PropertyOwnerController extends Controller
                 $availableRoomsCount += $rtData['total_rooms'];
 
                 // Prices
-                foreach (['daily', 'monthly', '3_months', '6_months'] as $period) {
-                    $priceKey = 'price_' . $period;
-                    if (isset($rtData[$priceKey])) {
+                if (!empty($rtData['prices'])) {
+                    foreach ($rtData['prices'] as $priceData) {
                         RoomTypePrice::create([
                             'room_type_id' => $roomType->id,
-                            'period_type' => $period,
-                            'price' => $rtData[$priceKey],
+                            'period_type' => $priceData['period_type'],
+                            'price' => (float) $priceData['price'],
                         ]);
                     }
                 }
 
+
                 // Room type images
                 if ($request->hasFile("room_type_images.$rtIndex")) {
                     foreach ($request->file("room_type_images.$rtIndex") as $imgIndex => $file) {
+                        $path = $file->store('room_type_images', 'public');
                         RoomTypeImage::create([
                             'room_type_id' => $roomType->id,
-                            'image_url' => Storage::url($file->store('room_type_images', 'public')),
+                            'image_url' => $path,
                             'type' => $request->room_type_image_types[$rtIndex][$imgIndex] ?? 'other',
                         ]);
                     }
@@ -371,7 +213,6 @@ class PropertyOwnerController extends Controller
                 'total_rooms' => $totalRoomsCount,
                 'available_rooms' => $availableRoomsCount,
             ]);
-
             DB::commit();
             return response()->json([
                 'status' => 'success',
@@ -388,322 +229,219 @@ class PropertyOwnerController extends Controller
         }
     }
 
+    /**
+     * Update the specified property in storage.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  \App\Models\Property  $property
+     * @return \Illuminate\Http\JsonResponse
+     */
     public function update(Request $request, Property $property)
     {
-        // if (!$request->user() || $request->user()->id !== $property->user_id) {
-        //     return response()->json(['message' => 'Unauthorized.'], 403);
-        // }
-
-        // Validasi data properti utama (sebagian besar nullable untuk update parsial)
-        $validator = Validator::make($request->all(), [
-            'name' => 'nullable|string|max:255',
-            'gender_preference' => 'nullable|string|in:Putra,Putri,Campur',
-            'description' => 'nullable|string',
+        // Debug semua input & file
+        Log::debug('Request Input:', $request->all());
+        // 1. Validasi data
+        $validated = $request->validate([
+            'name' => 'sometimes|required|string|max:255',
+            'gender_preference' => 'sometimes|required|string|in:Putra,Putri,Campur',
+            'description' => 'sometimes|required|string',
             'rules' => 'nullable|string',
-            'rules_file' => 'nullable|file|mimes:pdf|max:2048',
-            'year_built' => 'nullable|integer|min:1900|max:' . date('Y'),
-            'manager_name' => 'nullable|string|max:255',
-            'manager_phone' => 'nullable|string|max:50',
-            'notes' => 'nullable|string',
-            'address_street' => 'nullable|string|max:255',
-            'address_city' => 'nullable|string|max:255',
-            'address_province' => 'nullable|string|max:255',
+            'year_built' => 'sometimes|required|integer|min:1900|max:' . date('Y'),
+            'address_street' => 'sometimes|required|string|max:255',
+            'address_city' => 'sometimes|required|string|max:255',
+            'address_province' => 'sometimes|required|string|max:255',
             'address_zip_code' => 'nullable|string|max:10',
-            'latitude' => 'nullable|numeric',
-            'longitude' => 'nullable|numeric',
-            'total_rooms' => 'nullable|integer|min:0',
-            'available_rooms' => 'nullable|integer|min:0',
+            'latitude' => 'sometimes|required|numeric',
+            'longitude' => 'sometimes|required|numeric',
 
-            // Validasi untuk gambar properti (jika ada yang baru diupload)
-            'property_images_to_add' => 'nullable|array',
-            'property_images_to_add.*' => 'image|mimes:jpeg,png,jpg,gif|max:2048',
-            'property_image_types_to_add' => 'nullable|array',
-            'property_image_types_to_add.*' => 'string|in:front_view,interior,street_view,other',
+            // Property Images
             'property_images_to_delete' => 'nullable|array',
+            'property_images_to_delete.*' => 'integer|exists:property_images,id',
+            'property_images_to_add.*' => 'image|mimes:jpeg,png,jpg,gif|max:2048',
+            'property_image_types_to_add.*' => 'string|nullable',
 
-            // Validasi untuk tipe kamar (JSON string)
-            'room_types_to_update' => 'nullable|string',
+
+            // Room Types
             'room_types_to_delete' => 'nullable|array',
+            'room_types_to_delete.*' => 'integer|exists:room_types,id',
+            'room_types_to_update' => 'nullable|array',
+            'room_types_to_update.*.id' => 'nullable|integer|exists:room_types,id',
+            'room_types_to_update.*.name' => 'sometimes|required|string|max:255',
+            'room_types_to_update.*.description' => 'sometimes|required|string',
+            'room_types_to_update.*.size_m2' => 'sometimes|required|numeric',
+            'room_types_to_update.*.total_rooms' => 'sometimes|required|integer|min:1',
+            'room_types_to_update.*.prices' => 'nullable|array',
+            'room_types_to_update.*.prices.*.period_type' => 'sometimes|required|string',
+            'room_types_to_update.*.prices.*.price' => 'sometimes|required|numeric|min:0',
+            'room_types_to_update' => 'required|array',
+            'room_types_to_update.*.specific_facilities' => 'nullable|array',
+            'room_types_to_update.*.specific_facilities.*' => 'integer|exists:facilities,id',
+            // Room Type Images
+            'room_types_to_update.*.images_to_add' => 'array',
+            'room_types_to_update.*.images_to_add.*' => 'file|image|mimes:jpeg,png,jpg,gif|max:5120',
+            'room_types_to_update.*.image_types_to_add' => 'array',
+            'room_types_to_update.*.image_types_to_add.*' => 'string|in:front_view,interior,street_view,other,cover,bathroom',
 
-            // Validasi untuk gambar tipe kamar (nested array of files)
-            'room_type_images_to_add' => 'nullable|array',
-            'room_type_images.*.*' => 'image|mimes:jpeg,png,jpg,gif|max:2048',
-            'room_type_image_types' => 'nullable|array',
-            'room_type_image_types.*.*' => 'string|in:cover,interior,bathroom,other',
+            // Rooms update
+            'rooms_to_update.*.*.id' => 'nullable|integer|exists:rooms,id',
+            'rooms_to_update.*.*.room_number' => 'sometimes|required|string|max:255',
+            'rooms_to_update.*.*.floor' => 'sometimes|required|integer',
+            'rooms_to_update.*.*.status' => 'sometimes|required|string|in:available,occupied,maintenance',
 
-            // Validasi untuk kamar individual (JSON string)
-            'rooms_to_update' => 'nullable|string',
-
-            // Validasi untuk fasilitas (JSON string)
-            'general_facilities' => 'nullable|string',
-            'room_type_specific_facilities_to_update' => 'nullable|string',
+            // General facilities
+            'general_facilities' => 'nullable|array',
+            'general_facilities.*' => 'nullable|integer|exists:facilities,id',
         ]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Validasi gagal',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        DB::beginTransaction();
-
         try {
-            $roomTypesToUpdateData = json_decode($request->room_types_to_update ?? '[]', true);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new \Exception('Invalid JSON for room_types_to_update.');
-            }
-
-            $roomTypesToDeleteIds = json_decode($request->room_types_to_delete ?? '[]', true);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new \Exception('Invalid JSON for room_types_to_delete.');
-            }
-
-            $propertyImagesToDeleteIds = json_decode($request->property_images_to_delete ?? '[]', true);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new \Exception('Invalid JSON for property_images_to_delete.');
-            }
-
-            $roomsToUpdateData = json_decode($request->rooms_to_update ?? '[]', true);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new \Exception('Invalid JSON for rooms_to_update.');
-            }
-
-            $generalFacilities = json_decode($request->general_facilities ?? '[]', true);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new \Exception('Invalid JSON for general_facilities.');
-            }
-
-            $roomTypeSpecificFacilitiesToUpdate = json_decode($request->room_type_specific_facilities_to_update ?? '[]', true);
-            if (json_last_error() !== JSON_ERROR_NONE) {
-                throw new \Exception('Invalid JSON for room_type_specific_facilities_to_update.');
-            }
-
-
-            $property->update([
-                'name' => $request->name,
-                'gender_preference' => $request->gender_preference,
-                'description' => $request->description,
-                'rules' => $request->rules,
-                'year_built' => $request->year_built,
-                'manager_name' => $request->manager_name,
-                'manager_phone' => $request->manager_phone,
-                'notes' => $request->notes,
-                'address_street' => $request->address_street,
-                'address_city' => $request->address_city,
-                'address_province' => $request->address_province,
-                'address_zip_code' => $request->address_zip_code,
-                'latitude' => $request->latitude,
-                'longitude' => $request->longitude,
-                'total_rooms' => $request->total_rooms,
-                'available_rooms' => $request->available_rooms,
-            ]);
-
-            if ($request->hasFile('rules_file')) {
-                if ($property->rules_file_url) {
-                    Storage::disk('public')->delete(str_replace(url('/storage'), '', $property->rules_file_url));
-                }
-                $property->rules_file_url = Storage::url($request->file('rules_file')->store('rules_files', 'public'));
-                $property->save();
-            }
-
-            if (!empty($propertyImagesToDeleteIds)) {
-                foreach ($propertyImagesToDeleteIds as $imageId) {
-                    $image = PropertyImage::find($imageId);
-                    if ($image && $image->property_id == $property->id) {
-                        Storage::disk('public')->delete(str_replace(url('/storage'), '', $image->image_url));
-                        $image->delete();
+            return DB::transaction(function () use ($validated, $request, $property) {
+                // 1. Update data properti utama
+                $property->update($validated);
+                // 2. Proses gambar properti
+                if ($request->filled('property_images_to_delete')) {
+                    $imageIds = array_unique($request->property_images_to_delete);
+                    foreach ($imageIds as $imageId) {
+                        $image = $property->images()->find($imageId);
+                        if ($image) {
+                            Storage::disk('public')->delete($image->image_url);
+                            $image->delete();
+                        }
                     }
                 }
-            }
-            if ($request->hasFile('property_images_to_add')) {
-                foreach ($request->file('property_images_to_add') as $index => $imageFile) {
-                    $imagePath = $imageFile->store('property_images', 'public');
-                    PropertyImage::create([
-                        'property_id' => $property->id,
-                        'image_url' => Storage::url($imagePath),
-                        'type' => $request->property_image_types_to_add[$index] ?? 'other',
-                    ]);
-                }
-            }
 
-            if (!empty($generalFacilities)) {
-                $property->facilities()->sync($generalFacilities);
-            } else {
-                $property->facilities()->detach();
-            }
-
-            if (!empty($roomTypesToDeleteIds)) {
-                foreach ($roomTypesToDeleteIds as $roomTypeId) {
-                    $roomType = RoomType::find($roomTypeId);
-                    if ($roomType && $roomType->property_id == $property->id) {
-                        $roomType->images()->each(function ($img) {
-                            Storage::disk('public')->delete(str_replace(url('/storage'), '', $img->image_url));
-                            $img->delete();
-                        });
-                        $roomType->rooms()->delete();
-                        $roomType->facilities()->detach();
-                        $roomType->delete();
+                if ($request->hasFile('property_images_to_add')) {
+                    foreach ($request->file('property_images_to_add') as $i => $file) {
+                        $path = $file->store('property_images', 'public');
+                        PropertyImage::create([
+                            'property_id' => $property->id,
+                            'image_url' => $path,
+                            'type' => $request->property_image_types_to_add[$i] ?? 'other',
+                        ]);
                     }
                 }
-            }
 
-            if (!empty($roomTypesToUpdateData)) {
-                foreach ($roomTypesToUpdateData as $rtIndex => $rtData) {
-                    $roomType = null;
-                    if (isset($rtData['id'])) {
-                        $roomType = RoomType::find($rtData['id']);
-                    }
+                // 3. Proses fasilitas umum
+                if (isset($validated['general_facilities'])) {
+                    $property->facilities()->sync($validated['general_facilities']);
+                }
 
-                    $roomTypeData = [
-                        'name' => $rtData['name'],
-                        'description' => $rtData['description'] ?? null,
-                        'size_m2' => $rtData['size_m2'] ?? null,
-                        'total_rooms' => $rtData['total_rooms'],
-                        'available_rooms' => $rtData['available_rooms'] ?? $rtData['total_rooms'],
-                    ];
+                // 4. Hapus tipe kamar jika ada
+                if (isset($validated['room_types_to_delete'])) {
+                    $property->roomTypes()->whereIn('id', $validated['room_types_to_delete'])->delete();
+                }
 
-                    if ($roomType && $roomType->property_id == $property->id) {
-                        $roomType->update($roomTypeData);
-                    } else {
-                        $roomType = $property->roomTypes()->create($roomTypeData);
-                    }
+                // 5. Update atau buat tipe kamar baru
+                if ($request->filled('room_types_to_update')) {
+                    foreach ($request->room_types_to_update as $rtIndex => $rtData) {
+                        $roomType = $property->roomTypes()->updateOrCreate(
+                            ['id' => $rtData['id'] ?? null],
+                            $rtData
+                        );
 
-                    // Simpan/update harga di tabel room_type_prices
-                    $pricingPeriods = ['daily', 'monthly', '3_months', '6_months'];
-                    foreach ($pricingPeriods as $period) {
-                        $priceKey = 'price_' . $period;
-                        if (isset($rtData[$priceKey]) && $rtData[$priceKey] !== null) {
-                            RoomTypePrice::updateOrCreate(
-                                ['room_type_id' => $roomType->id, 'period_type' => $period],
-                                ['price' => $rtData[$priceKey]]
+                        // Hapus kamar jika ada
+                        if (isset($rtData['rooms_to_delete']) && is_array($rtData['rooms_to_delete'])) {
+                            $roomType->rooms()->whereIn('id', $rtData['rooms_to_delete'])->delete();
+                        }
+
+                        // Update atau buat kamar
+                        if (isset($rtData['rooms_to_update'])) {
+                            foreach ($rtData['rooms_to_update'] as $roomData) {
+                                $roomType->rooms()->updateOrCreate(
+                                    ['id' => $roomData['id'] ?? null],
+                                    $roomData
+                                );
+                            }
+                        }
+
+                        // Upsert harga sewa
+                        if (isset($rtData['prices'])) {
+                            $pricesToUpsert = [];
+                            foreach ($rtData['prices'] as $priceData) {
+                                $pricesToUpsert[] = array_merge($priceData, ['room_type_id' => $roomType->id]);
+                            }
+                            RoomTypePrice::upsert(
+                                $pricesToUpsert,
+                                ['id'],
+                                ['period_type', 'price']
                             );
-                        } else {
-                            // Jika harga dihapus dari request, hapus juga dari DB
-                            RoomTypePrice::where('room_type_id', $roomType->id)
-                                ->where('period_type', $period)
-                                ->delete();
                         }
-                    }
 
-                    if ($request->hasFile("room_type_images_to_add.$rtIndex")) {
-                        foreach ($request->file("room_type_images_to_add.$rtIndex") as $imgIndex => $rtImageFile) {
-                            $rtImagePath = $rtImageFile->store('room_type_images', 'public');
-                            RoomTypeImage::create([
-                                'room_type_id' => $roomType->id,
-                                'image_url' => Storage::url($rtImagePath),
-                                'type' => $request->room_type_image_types_to_add[$rtIndex][$imgIndex] ?? 'other',
-                            ]);
-                        }
-                    }
-                    if (isset($rtData['images_to_delete']) && !empty($rtData['images_to_delete'])) {
-                        foreach ($rtData['images_to_delete'] as $rtImageId) {
-                            $rtImage = RoomTypeImage::find($rtImageId);
-                            if ($rtImage && $rtImage->room_type_id == $roomType->id) {
-                                Storage::disk('public')->delete(str_replace(url('/storage'), '', $rtImage->image_url));
-                                $rtImage->delete();
+                        // Hapus gambar tipe kamar sesuai $rtIndex
+                        $imagesToDelete = $request->input("room_type_images_to_delete.$rtIndex", []);
+                        foreach ($imagesToDelete as $imageId) {
+                            $image = RoomTypeImage::find($imageId);
+                            if ($image) {
+                                Storage::disk('public')->delete($image->image_url);
+                                $image->delete();
                             }
                         }
-                    }
 
-                    if (isset($roomTypeSpecificFacilitiesToUpdate[$rtIndex]) && !empty($roomTypeSpecificFacilitiesToUpdate[$rtIndex])) {
-                        $roomType->facilities()->sync($roomTypeSpecificFacilitiesToUpdate[$rtIndex]);
-                    } else {
-                        $roomType->facilities()->detach();
-                    }
-
-                    if (isset($rtData['rooms']) && !empty($rtData['rooms'])) {
-                        foreach ($rtData['rooms'] as $roomData) {
-                            $room = null;
-                            if (isset($roomData['id'])) {
-                                $room = Room::find($roomData['id']);
-                            }
-                            $roomIndividualData = [
-                                'room_number' => $roomData['room_number'],
-                                'floor' => $roomData['floor'] ?? null,
-                                'status' => $roomData['status'],
-                            ];
-                            if ($room && $room->room_type_id == $roomType->id) {
-                                $room->update($roomIndividualData);
-                            } else {
-                                $roomType->rooms()->create($roomIndividualData);
+                        // Tambah gambar tipe kamar baru sesuai $rtIndex
+                        if (isset($rtData['images_to_add'])) {
+                            foreach ($rtData['images_to_add'] as $index => $image) {
+                                $type = $rtData['image_types_to_add'][$index] ?? 'other';
+                                if ($image instanceof \Illuminate\Http\UploadedFile) {
+                                    $path = $image->store('room_type_images', 'public');
+                                    RoomTypeImage::create([
+                                        'room_type_id' => $roomType->id,
+                                        'image_url' => $path,
+                                        'type' => $type
+                                    ]);
+                                }
                             }
                         }
-                    }
-                    if (isset($rtData['rooms_to_delete']) && !empty($rtData['rooms_to_delete'])) {
-                        foreach ($rtData['rooms_to_delete'] as $roomId) {
-                            $room = Room::find($roomId);
-                            if ($room && $room->room_type_id == $roomType->id) {
-                                $room->delete();
-                            }
+                        if (!empty($rtData['specific_facilities'])) {
+                            $roomType->facilities()->sync($rtData['specific_facilities']);
                         }
                     }
                 }
-            }
 
-            DB::commit();
+                // Reload relasi agar respons lengkap
+                $property->load([
+                    'images',
+                    'facilities',
+                    'roomTypes.prices',
+                    'roomTypes.facilities',
+                    'roomTypes.images',
+                    'roomTypes.rooms'
+                ]);
 
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Properti berhasil diperbarui!',
-                'data' => $property->load(['images', 'roomTypes.images', 'roomTypes.rooms', 'roomTypes.facilities', 'facilities'])
-            ], 200);
+                return response()->json([
+                    'message' => 'Properti berhasil diupdate.',
+                    'data' => $property
+                ], 200);
+            });
         } catch (\Exception $e) {
-            DB::rollBack();
+            Log::error('Update Property Error: ' . $e->getMessage(), ['trace' => $e->getTraceAsString()]);
             return response()->json([
-                'status' => 'error',
-                'message' => 'Gagal memperbarui properti.',
-                'error_detail' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'message' => 'Gagal mengupdate properti.',
+                'error' => $e->getMessage()
             ], 500);
         }
     }
-
-
-    public function destroy(Property $property)
+    /**
+     * Hapus properti beserta semua relasinya.
+     *
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    function destroy($id)
     {
-        if (!Auth::check() || Auth::user()->id !== $property->user_id) {
-            return response()->json(['message' => 'Unauthorized.'], 403);
-        }
-
-        DB::beginTransaction();
-
         try {
-            // Hapus gambar properti
-            $property->images()->each(function ($image) {
-                Storage::disk('public')->delete(str_replace(url('/storage'), '', $image->image_url));
-                $image->delete();
+            $property = Property::findOrFail($id);
+
+            // Hapus semua file gambar terkait properti
+            $property->images->each(function ($image) {
+                Storage::disk('public')->delete(str_replace('/storage/', '', $image->image_url));
             });
 
-            // Hapus gambar tipe kamar dan kamar individual
-            $property->roomTypes()->each(function ($roomType) {
-                $roomType->images()->each(function ($img) {
-                    Storage::disk('public')->delete(str_replace(url('/storage'), '', $img->image->url));
-                    $img->delete();
-                });
-                $roomType->rooms()->delete();
-                $roomType->facilities()->detach();
-            });
-
-            // Detach fasilitas umum
-            $property->facilities()->detach();
-
-            // Hapus properti utama
+            // Hapus properti itu sendiri dan semua relasinya
+            // Jika Anda sudah mengatur onDelete('cascade') di database, ini akan menghapus semua data terkait secara otomatis.
             $property->delete();
 
-            DB::commit();
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Properti berhasil dihapus.'
-            ]);
+            return response()->json(['message' => 'Properti berhasil dihapus.'], 200);
         } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'message' => 'Gagal menghapus properti.',
-                'error' => $e->getMessage()
-            ], 500);
+            return response()->json(['message' => 'Gagal menghapus properti.', 'error' => $e->getMessage()], 500);
         }
     }
 }

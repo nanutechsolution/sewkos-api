@@ -33,9 +33,10 @@ class RoomType extends Model
         return $this->hasMany(Room::class);
     }
 
+
     public function facilities()
     {
-        return $this->belongsToMany(Facility::class, 'room_type_facilities');
+        return $this->belongsToMany(Facility::class, 'room_type_facilities', 'room_type_id', 'facility_id');
     }
     public function prices()
     {

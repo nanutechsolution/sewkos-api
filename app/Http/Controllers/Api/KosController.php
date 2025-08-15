@@ -17,7 +17,7 @@ class KosController extends Controller
         $query->with([
             'images',
             'roomTypes' => function ($q) {
-                $q->with(['images', 'rooms', 'prices']); // Tambahkan 'prices'
+                $q->with(['images', 'rooms', 'prices']);
             },
             'facilities',
             'reviews'
@@ -93,7 +93,6 @@ class KosController extends Controller
 
     public function show(Property $property)
     {
-        // Eager load semua relasi yang dibutuhkan untuk detail properti
         $property->load([
             'user',
             'images',
