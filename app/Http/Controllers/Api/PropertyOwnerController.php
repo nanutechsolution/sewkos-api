@@ -157,7 +157,6 @@ class PropertyOwnerController extends Controller
                     'total_rooms' => $rtData['total_rooms'],
                     'available_rooms' => $rtData['total_rooms'],
                 ]);
-
                 $totalRoomsCount += $rtData['total_rooms'];
                 $availableRoomsCount += $rtData['total_rooms'];
 
